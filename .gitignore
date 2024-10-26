@@ -1,6 +1,7 @@
 __pycache__/
 venv/
 .venv/
+data/
 data/data_format1/
 data/data_format2/
 *.csv
