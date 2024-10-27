@@ -5,4 +5,5 @@ data/data_format1/
 data/data_format2/
 *.csv
 *.zip
+*.pkl
 
