@@ -9,6 +9,7 @@ import plotly.express as px
 
 # Configurar la página en modo amplio
 st.set_page_config(layout="wide", page_title="📚 GRUPO 4 - CR 🔎")
+
 # Definir colores de la paleta
 colores = {
     "fondo": "#13141A",
@@ -18,23 +19,22 @@ colores = {
     "exito": "#17C69B"
 }
 
-# Cargar el modelo, métricas y curvas desde el archivo .pkl
-def cargar_modelo_y_métricas():
-    with open("metricas_y_modelo_rfm.pkl", "rb") as f:
+# Función para cargar el modelo y métricas según el modelo seleccionado
+def cargar_modelo_y_métricas(nombre_modelo):
+    archivo_modelo = f"metricas_{nombre_modelo}.pkl"
+    with open(archivo_modelo, "rb") as f:
         model_records = pickle.load(f)
     return model_records
 
-# Cargar el diccionario que contiene el modelo y las métricas
-model_records = cargar_modelo_y_métricas()
-modelo = model_records['best_instance']  # El modelo preentrenado
-metricas = model_records  # Todas las métricas y datos
+# Opciones de modelos en el menú desplegable
+modelos_disponibles = {
+    "Modelo RFM - XGBoost": "rfm_xgboost",
+    "Modelo SVM": "svm",
+    "Modelo LSTM": "lstm",
+    "Modelo CNN": "cnn"
+}
 
-# Preparar el conjunto de validación
-X_valid = pd.DataFrame(model_records['X_valid'], columns=model_records['feature_names'])
-X_valid_dmatrix = DMatrix(X_valid)
-y_valid = model_records['y_valid']
-
-# Dashboard
+# Dashboard - Título y Autores
 st.markdown(f"""
 <h1 style='text-align: center; color:{colores['titulo']}'>
 📚 DASHBOARD - PREDICTOR DE COMPRADORES RECURRENTES - RESULTADOS 🔎
@@ -49,8 +49,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
-# Sección de resultados generales
+# Sección de Instrucciones de uso
 col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown(f"<h2 style='color:{colores['titulo']}'>Instrucciones de uso</h2>", unsafe_allow_html=True)
@@ -66,8 +65,7 @@ with col1:
     3. **Predicción de Nuevos Datos**: Para realizar predicciones, suba un archivo CSV con los datos del cliente a la sección de "Predicción". El modelo procesará el archivo y generará probabilidades de recurrencia en las compras, permitiéndole identificar qué clientes tienen una mayor probabilidad de realizar compras futuras.
     """)
 
-
-# Mostrar resultados de predicciones en formato de tabla
+# Selección del modelo
 with col2:
     st.write("")
     st.write("""
@@ -78,11 +76,14 @@ with col2:
 
     st.markdown(f"<h2 style='color:{colores['exito']}'>Selección del modelo</h2>", unsafe_allow_html=True)
 
-    # Opciones de modelos en el menú desplegable
-    modelos_disponibles = ["Modelo RFM - XGBoost", "Modelo SVM", "Modelo LSTM", "Modelo CNN"]
-
     # Menú desplegable para seleccionar el modelo
-    modelo_seleccionado = st.selectbox("Selecciona el modelo para visualizar", modelos_disponibles)
+    modelo_seleccionado = st.selectbox("Selecciona el modelo para visualizar", list(modelos_disponibles.keys()))
+
+    # Cargar el modelo y métricas según el modelo seleccionado
+    nombre_modelo = modelos_disponibles[modelo_seleccionado]
+    model_records = cargar_modelo_y_métricas(nombre_modelo)
+    modelo = model_records['best_instance']
+    metricas = model_records
 
     # Mostrar el modelo seleccionado
     st.write(f"**Modelo seleccionado:** {modelo_seleccionado}")
@@ -91,7 +92,7 @@ with col2:
     # Extraer métricas del reporte de clasificación
     report = metricas['classification_report']
     results = {
-        'Modelo RFM': {
+        modelo_seleccionado: {
             'Precision': report['weighted avg']['precision'],
             'Recall': report['weighted avg']['recall'],
             'F1-Score': report['weighted avg']['f1-score'],
@@ -140,6 +141,8 @@ with col5:
 with col6:
     st.header("Matriz de Confusión")
     threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
+    X_valid_dmatrix = DMatrix(pd.DataFrame(model_records['X_valid'], columns=model_records['feature_names']))
+    y_valid = model_records['y_valid']
     y_proba = modelo.predict(X_valid_dmatrix)
     y_pred_adjusted = (y_proba >= threshold).astype(int)
     cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
