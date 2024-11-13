@@ -1,139 +1,183 @@
 import streamlit as st
-import numpy as np
 import pickle
-import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report, roc_curve, roc_auc_score
+import numpy as np
+from sklearn.metrics import confusion_matrix
+from xgboost import DMatrix
+import plotly.graph_objects as go
+import plotly.express as px
 
 # Configurar la página en modo amplio
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="📚 GRUPO 4 - CR 🔎")
+# Definir colores de la paleta
+colores = {
+    "fondo": "#13141A",
+    "titulo": "#A90448",
+    "entrenamiento": "#FB3640",
+    "validacion": "#FDA543",
+    "exito": "#17C69B"
+}
 
-# Cargar el modelo, métricas y curvas
+# Cargar el modelo, métricas y curvas desde el archivo .pkl
 def cargar_modelo_y_métricas():
-    # Cargar el modelo guardado
-    with open("modelo_mejorado_pca_v2.pkl", "rb") as f:
-        modelo = pickle.load(f)
+    with open("metricas_y_modelo_rfm.pkl", "rb") as f:
+        model_records = pickle.load(f)
+    return model_records
 
-    # Cargar las métricas y resultados guardados (simulados para este ejemplo)
-    metricas = {
-        "best_auc": 0.90,  # Valor de ejemplo
-        "accuracy": 0.88,
-        "roc_auc_score": 0.90,
-        "classification_report": {
-            "precision": 0.87,
-            "recall": 0.85,
-            "f1_score": 0.86
+# Cargar el diccionario que contiene el modelo y las métricas
+model_records = cargar_modelo_y_métricas()
+modelo = model_records['best_instance']  # El modelo preentrenado
+metricas = model_records  # Todas las métricas y datos
+
+# Preparar el conjunto de validación
+X_valid = pd.DataFrame(model_records['X_valid'], columns=model_records['feature_names'])
+X_valid_dmatrix = DMatrix(X_valid)
+y_valid = model_records['y_valid']
+
+# Dashboard
+st.markdown(f"""
+<h1 style='text-align: center; color:{colores['titulo']}'>
+📚 DASHBOARD - PREDICTOR DE COMPRADORES RECURRENTES - RESULTADOS 🔎
+</h1>
+""", unsafe_allow_html=True)
+st.markdown("""
+<div style='text-align: center;'>
+    Autores ☝️ Diego Alexander Hernández Silvestre 21270 🛻 |
+    Linda Inés Jiménez Vides 21169 🏎️ |
+    Mario Antonio Guerra Morales 21008 🚲 |
+    David Jonathan Aragón Vasquez 21053 🚁  
+</div>
+""", unsafe_allow_html=True)
+
+
+# Sección de resultados generales
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.markdown(f"<h2 style='color:{colores['titulo']}'>Instrucciones de uso</h2>", unsafe_allow_html=True)
+    st.write("""
+    Este dashboard ha sido diseñado para permitir una visualización y análisis detallados de los resultados obtenidos con un modelo de predicción de compradores recurrentes, desarrollado en el contexto de un proyecto universitario. Su propósito principal es ayudar a los usuarios a entender el comportamiento de los clientes y a anticipar su probabilidad de realizar compras futuras, basándose en técnicas avanzadas de análisis de datos.
+
+    ### Cómo Utilizar el Dashboard
+
+    1. **Resultados Generales**: En esta sección, se presentan los principales indicadores del modelo, como la precisión promedio y el AUC en validación cruzada. Estos resultados permiten obtener una visión global del rendimiento del modelo.
+
+    2. **Métricas y Gráficas**: Visualice y analice gráficas interactivas como la curva ROC, curvas de aprendizaje y la matriz de confusión, las cuales ayudan a comprender la capacidad del modelo para clasificar correctamente a los clientes y a identificar áreas de mejora.
+
+    3. **Predicción de Nuevos Datos**: Para realizar predicciones, suba un archivo CSV con los datos del cliente a la sección de "Predicción". El modelo procesará el archivo y generará probabilidades de recurrencia en las compras, permitiéndole identificar qué clientes tienen una mayor probabilidad de realizar compras futuras.
+    """)
+
+
+# Mostrar resultados de predicciones en formato de tabla
+with col2:
+    st.write("")
+    st.write("""
+    ### Beneficios del Dashboard
+
+    Este dashboard facilita la toma de decisiones basadas en datos, apoyando a los equipos de marketing y ventas para optimizar sus campañas y esfuerzos de retención de clientes. Mediante la identificación de compradores recurrentes, es posible enfocar los recursos en los clientes más valiosos, maximizando así la efectividad de las estrategias de fidelización.
+    """)
+
+    st.markdown(f"<h2 style='color:{colores['exito']}'>Selección del modelo</h2>", unsafe_allow_html=True)
+
+    # Opciones de modelos en el menú desplegable
+    modelos_disponibles = ["Modelo RFM - XGBoost", "Modelo SVM", "Modelo LSTM", "Modelo CNN"]
+
+    # Menú desplegable para seleccionar el modelo
+    modelo_seleccionado = st.selectbox("Selecciona el modelo para visualizar", modelos_disponibles)
+
+    # Mostrar el modelo seleccionado
+    st.write(f"**Modelo seleccionado:** {modelo_seleccionado}")
+
+    st.subheader("Métricas de los modelos")
+    # Extraer métricas del reporte de clasificación
+    report = metricas['classification_report']
+    results = {
+        'Modelo RFM': {
+            'Precision': report['weighted avg']['precision'],
+            'Recall': report['weighted avg']['recall'],
+            'F1-Score': report['weighted avg']['f1-score'],
         }
     }
     
-    # Simulación de datos de curvas
-    # Cargar las curvas de pérdida del entrenamiento y validación
-    loss_train = [0.6, 0.5, 0.4, 0.3]  # Valores de ejemplo para pérdida en entrenamiento
-    loss_valid = [0.65, 0.55, 0.45, 0.35]  # Valores de ejemplo para pérdida en validación
+    # Crear DataFrame para mostrar la tabla
+    df_results = pd.DataFrame(results).T
+    st.table(df_results)
 
-    # Cargar los tamaños y puntajes de las curvas de aprendizaje
-    train_sizes = np.linspace(0.1, 1.0, 10)
-    train_scores = np.linspace(0.7, 0.9, 10) + np.random.rand(10) * 0.05  # Ejemplo de puntajes en entrenamiento
-    valid_scores = np.linspace(0.65, 0.85, 10) + np.random.rand(10) * 0.05  # Ejemplo de puntajes en validación
+# Curvas de Pérdida durante el Entrenamiento y Validación usando Plotly
+with col3:
+    st.header("Curvas de Error")
+    fig_loss = go.Figure()
+    fig_loss.add_trace(go.Scatter(y=metricas['best_evals_result']['train']['logloss'], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
+    fig_loss.add_trace(go.Scatter(y=metricas['best_evals_result']['valid']['logloss'], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
+    fig_loss.update_layout(title="Gráfica de Pérdida durante el Entrenamiento", xaxis_title="Iteración", yaxis_title="Log Loss", plot_bgcolor=colores['fondo'])
+    st.plotly_chart(fig_loss)
 
-    # Cargar la curva ROC (simulada)
-    fpr = np.linspace(0, 1, 100)
-    tpr = fpr ** 0.5  # Curva ROC simulada para el ejemplo
-    return modelo, metricas, loss_train, loss_valid, train_sizes, train_scores, valid_scores, fpr, tpr
+# Sección de curvas y matriz de confusión
+col4, col5, col6 = st.columns(3)
 
-# Llamar a la función para cargar el modelo y las métricas
-modelo, metricas, loss_train, loss_valid, train_sizes, train_scores, valid_scores, fpr, tpr = cargar_modelo_y_métricas()
+# Curva ROC usando Plotly
+with col4:
+    st.header("Curva ROC")
+    fig_roc = go.Figure()
+    fig_roc.add_trace(go.Scatter(x=metricas['best_fpr'], y=metricas['best_tpr'], mode='lines', name="Curva ROC", line=dict(color=colores['entrenamiento'])))
+    fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
+    fig_roc.update_layout(title=f"Curva ROC (AUC = {metricas['best_score_auc']:.2f})", xaxis_title="Tasa de Falsos Positivos", yaxis_title="Tasa de Verdaderos Positivos", plot_bgcolor=colores['fondo'])
+    st.plotly_chart(fig_roc)
 
-# Mostrar métricas y gráficos en el dashboard
-st.title("Dashboard de Modelo Clasificador")
-st.write("Este dashboard permite ver las métricas de rendimiento del modelo preentrenado y realizar predicciones.")
+# Curvas de Aprendizaje usando Plotly
+with col5:
+    st.header("Curvas de Aprendizaje")
+    train_sizes = metricas['learning_curve']['train_sizes']
+    train_scores_mean = metricas['learning_curve']['train_scores_mean']
+    valid_scores_mean = metricas['learning_curve']['valid_scores_mean']
 
-# Métricas del modelo
-st.header("Métricas del Modelo")
-st.write("**Mejor AUC**:", metricas["best_auc"])
-st.write("**Exactitud (Accuracy)**:", metricas["accuracy"])
-st.write("**ROC-AUC Score**:", metricas["roc_auc_score"])
-st.write("**Reporte de Clasificación:**")
-st.write(metricas["classification_report"])
+    fig_learning = go.Figure()
+    fig_learning.add_trace(go.Scatter(x=train_sizes, y=train_scores_mean, mode='lines+markers', name="AUC en Entrenamiento", line=dict(color=colores['entrenamiento'])))
+    fig_learning.add_trace(go.Scatter(x=train_sizes, y=valid_scores_mean, mode='lines+markers', name="AUC en Validación", line=dict(color=colores['validacion'])))
+    fig_learning.update_layout(title="Curvas de Aprendizaje", xaxis_title="Tamaño del Conjunto de Entrenamiento", yaxis_title="AUC", plot_bgcolor=colores['fondo'])
+    st.plotly_chart(fig_learning)
 
-# Curva ROC
-st.header("Curva ROC del Mejor Modelo")
-plt.figure()
-plt.plot(fpr, tpr, label=f"Curva ROC (AUC = {metricas['roc_auc_score']:.2f})")
-plt.plot([0, 1], [0, 1], 'k--')
-plt.xlabel("Tasa de Falsos Positivos")
-plt.ylabel("Tasa de Verdaderos Positivos")
-plt.title("Curva ROC del Mejor Modelo")
-plt.legend(loc="lower right")
-st.pyplot(plt)
+# Matriz de Confusión con Plotly Heatmap
+with col6:
+    st.header("Matriz de Confusión")
+    threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
+    y_proba = modelo.predict(X_valid_dmatrix)
+    y_pred_adjusted = (y_proba >= threshold).astype(int)
+    cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
 
-# Curvas de Pérdida durante el Entrenamiento y Validación
-st.header("Curvas de Pérdida en Entrenamiento y Validación")
-plt.figure(figsize=(10, 6))
-plt.plot(loss_train, label='Pérdida en Entrenamiento')
-plt.plot(loss_valid, label='Pérdida en Validación')
-plt.xlabel("Iteración")
-plt.ylabel("Log Loss")
-plt.title("Gráfica de Pérdida durante el Entrenamiento")
-plt.legend(loc="upper right")
-plt.grid()
-st.pyplot(plt)
+    # Crear heatmap personalizado para la matriz de confusión
+    fig_cm = go.Figure(data=go.Heatmap(
+        z=cm_adjusted,
+        x=["Predicción Negativa", "Predicción Positiva"],
+        y=["Real Negativo", "Real Positivo"],
+        colorscale=[[0, colores['fondo']], [1, colores['exito']]],
+        texttemplate="%{z}",
+        showscale=False
+    ))
+    fig_cm.update_layout(
+        title="Matriz de Confusión Ajustada",
+        xaxis_title="Predicciones",
+        yaxis_title="Valores Verdaderos",
+        plot_bgcolor=colores['fondo']
+    )
+    st.plotly_chart(fig_cm)
 
-# Curvas de Aprendizaje
-st.header("Curvas de Aprendizaje del Mejor Modelo")
-plt.figure(figsize=(10, 6))
-plt.plot(train_sizes, train_scores, 'o-', color="blue", label="AUC en Entrenamiento")
-plt.plot(train_sizes, valid_scores, 'o-', color="red", label="AUC en Validación")
-plt.fill_between(train_sizes, train_scores - np.std(train_scores), train_scores + np.std(train_scores), color="blue", alpha=0.2)
-plt.fill_between(train_sizes, valid_scores - np.std(valid_scores), valid_scores + np.std(valid_scores), color="red", alpha=0.2)
-plt.title("Curvas de Aprendizaje")
-plt.xlabel("Tamaño del Conjunto de Entrenamiento")
-plt.ylabel("AUC")
-plt.legend(loc="best")
-plt.grid()
-st.pyplot(plt)
-
-# Matriz de Confusión con Threshold Ajustado
-st.header("Matriz de Confusión con Threshold Ajustado")
-threshold = st.slider("Umbral de decisión para la Clase 1", 0.0, 1.0, 0.5)
-
-# Simulación de predicciones para mostrar la matriz de confusión
-y_valid = np.random.randint(0, 2, size=100)  # Datos simulados
-y_proba = np.random.rand(100)  # Probabilidades simuladas
-y_pred_adjusted = (y_proba >= threshold).astype(int)
-
-cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
-disp_adjusted = ConfusionMatrixDisplay(confusion_matrix=cm_adjusted)
-fig, ax = plt.subplots()
-disp_adjusted.plot(cmap=plt.cm.Blues, ax=ax)
-plt.title("Matriz de Confusión Ajustada")
-plt.xlabel("Predicciones")
-plt.ylabel("Valores Verdaderos")
-st.pyplot(fig)
-
-# Realizar predicciones con el modelo cargado
-st.header("Realizar Predicciones con el Modelo")
-st.write("Sube un archivo con los datos para predecir:")
-
-# Entrada para archivo de datos a predecir
-uploaded_file = st.file_uploader("Selecciona un archivo CSV", type="csv")
+# Sección de predicciones de usuario
+st.header("Predicción")
+uploaded_file = st.file_uploader("Selecciona un archivo CSV para predecir", type="csv")
 if uploaded_file is not None:
     input_data = pd.read_csv(uploaded_file)
     st.write("Vista previa de los datos:")
     st.write(input_data.head())
 
-    # Convertir a DMatrix y hacer predicciones
-    dmatrix_data = DMatrix(input_data)  # Reemplazar con `input_data_reduced` si usas PCA
+    input_data = input_data.reindex(columns=model_records['feature_names'], fill_value=0)
+    dmatrix_data = DMatrix(input_data)
     pred_proba = modelo.predict(dmatrix_data)
     pred_labels = (pred_proba >= threshold).astype(int)
 
-    # Mostrar resultados de predicción
     st.write("Predicciones:")
     st.write(pred_labels)
-    
-    # Descargar los resultados
-    resultados = pd.DataFrame({"Predicción": pred_labels})
-    resultados["Probabilidad Clase 1"] = pred_proba
+
+    resultados = pd.DataFrame({"Predicción": pred_labels, "Probabilidad Clase 1": pred_proba})
     csv = resultados.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="Descargar predicciones",
