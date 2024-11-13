@@ -6,6 +6,7 @@ import json
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from xgboost import DMatrix
 import plotly.graph_objects as go
+import plotly.express as px
 from joblib import load  # Importa load para cargar el modelo joblib
 from tensorflow.keras.models import load_model  # Para cargar el modelo LSTM en formato .h5
 
@@ -271,14 +272,15 @@ with col6:
     )
     st.plotly_chart(fig_cm)
 
-# Sección de predicciones de usuario
 st.header("Predicción")
 uploaded_file = st.file_uploader("Selecciona un archivo CSV para predecir", type="csv")
 if uploaded_file is not None:
+    # Cargar datos del archivo subido
     input_data = pd.read_csv(uploaded_file)
     st.write("Vista previa de los datos:")
     st.write(input_data.head())
 
+    # Realizar predicciones según el modelo seleccionado
     if nombre_modelo == "rfm_xgboost":
         input_data = input_data.reindex(columns=model_records['feature_names'], fill_value=0)
         dmatrix_data = DMatrix(input_data)
@@ -288,12 +290,31 @@ if uploaded_file is not None:
     elif nombre_modelo == "apriori_rf":
         pred_proba = modelo.predict_proba(input_data)[:, 1]
 
+    # Convertir probabilidades a etiquetas (0 o 1) usando el umbral
     pred_labels = (pred_proba >= threshold).astype(int)
 
-    st.write("Predicciones:")
-    st.write(pred_labels)
+    # Mostrar predicciones en un DataFrame
+    st.write("Predicciones detalladas:")
+    resultados = pd.DataFrame({
+        "ID": input_data.index,  # Usa un identificador si lo tienes, aquí se usa el índice de DataFrame
+        "Predicción": pred_labels,
+        "Probabilidad Clase 1": pred_proba
+    })
 
-    resultados = pd.DataFrame({"Predicción": pred_labels, "Probabilidad Clase 1": pred_proba})
+    st.write(resultados)
+
+    # Graficar las probabilidades de predicción con Plotly
+    fig = px.bar(resultados, x="ID", y="Probabilidad Clase 1", color="Predicción",
+                 color_continuous_scale=["blue", "red"], labels={"ID": "ID de muestra"})
+    fig.update_layout(
+        title="Probabilidades de Predicción para la Clase 1",
+        xaxis_title="ID de muestra",
+        yaxis_title="Probabilidad de Clase 1",
+        coloraxis_colorbar=dict(title="Clase Predicha")
+    )
+    st.plotly_chart(fig)
+
+    # Botón para descargar las predicciones
     csv = resultados.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="Descargar predicciones",
