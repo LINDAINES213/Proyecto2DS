@@ -2,10 +2,11 @@ import streamlit as st
 import pickle
 import pandas as pd
 import numpy as np
-from sklearn.metrics import confusion_matrix
+import json
+from sklearn.metrics import confusion_matrix, roc_curve, auc
 from xgboost import DMatrix
 import plotly.graph_objects as go
-import plotly.express as px
+from tensorflow.keras.models import load_model  # Para cargar el modelo LSTM en formato .h5
 
 # Configurar la página en modo amplio
 st.set_page_config(layout="wide", page_title="📚 GRUPO 4 - CR 🔎")
@@ -21,17 +22,36 @@ colores = {
 
 # Función para cargar el modelo y métricas según el modelo seleccionado
 def cargar_modelo_y_métricas(nombre_modelo):
-    archivo_modelo = f"metricas_{nombre_modelo}.pkl"
-    with open(archivo_modelo, "rb") as f:
-        model_records = pickle.load(f)
-    return model_records
+    if nombre_modelo == "rfm_xgboost":
+        archivo_modelo = "dashboardData/XGBoostRFM/metricas_rfm_xgboost.pkl"
+        with open(archivo_modelo, "rb") as f:
+            model_records = pickle.load(f)
+        return model_records, model_records['best_instance']
+    elif nombre_modelo == "lstm":
+        # Cargar archivos específicos para el modelo LSTM
+        with open("dashboardData/LSTM/classification_reportLSTM.json", "r") as f:
+            classification_report = json.load(f)
+        with open("dashboardData/LSTM/training_historyLSTM.json", "r") as f:
+            training_history = json.load(f)
+        predictions_df = pd.read_csv("dashboardData/LSTM/predictionsLSTM.csv")
+        
+        # Cargar el modelo LSTM en formato .h5
+        lstm_model = load_model("dashboardData/LSTM/model_lstm_optimized.h5")
+        
+        # Estructurar los datos como se esperan en el código
+        model_records = {
+            'classification_report': classification_report,
+            'training_history': training_history,
+            'predictions_df': predictions_df
+        }
+        return model_records, lstm_model  # Retorna el modelo LSTM cargado
+    else:
+        return None, None
 
 # Opciones de modelos en el menú desplegable
 modelos_disponibles = {
     "Modelo RFM - XGBoost": "rfm_xgboost",
-    "Modelo SVM": "svm",
     "Modelo LSTM": "lstm",
-    "Modelo CNN": "cnn"
 }
 
 # Dashboard - Título y Autores
@@ -81,8 +101,7 @@ with col2:
 
     # Cargar el modelo y métricas según el modelo seleccionado
     nombre_modelo = modelos_disponibles[modelo_seleccionado]
-    model_records = cargar_modelo_y_métricas(nombre_modelo)
-    modelo = model_records['best_instance']
+    model_records, modelo = cargar_modelo_y_métricas(nombre_modelo)
     metricas = model_records
 
     # Mostrar el modelo seleccionado
@@ -107,9 +126,14 @@ with col2:
 with col3:
     st.header("Curvas de Error")
     fig_loss = go.Figure()
-    fig_loss.add_trace(go.Scatter(y=metricas['best_evals_result']['train']['logloss'], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
-    fig_loss.add_trace(go.Scatter(y=metricas['best_evals_result']['valid']['logloss'], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
-    fig_loss.update_layout(title="Gráfica de Pérdida durante el Entrenamiento", xaxis_title="Iteración", yaxis_title="Log Loss", plot_bgcolor=colores['fondo'])
+    if nombre_modelo == "rfm_xgboost":
+        fig_loss.add_trace(go.Scatter(y=metricas['best_evals_result']['train']['logloss'], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
+        fig_loss.add_trace(go.Scatter(y=metricas['best_evals_result']['valid']['logloss'], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
+        fig_loss.update_layout(title="Gráfica de Pérdida durante el Entrenamiento", xaxis_title="Iteración", yaxis_title="Log Loss", plot_bgcolor=colores['fondo'])
+    elif nombre_modelo == "lstm":
+        fig_loss.add_trace(go.Scatter(y=metricas['training_history']['loss'], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
+        fig_loss.add_trace(go.Scatter(y=metricas['training_history']['val_loss'], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
+        fig_loss.update_layout(title="Curva de Entrenamiento - LSTM", xaxis_title="Épocas", yaxis_title="Loss", plot_bgcolor=colores['fondo'])
     st.plotly_chart(fig_loss)
 
 # Sección de curvas y matriz de confusión
@@ -118,36 +142,57 @@ col4, col5, col6 = st.columns(3)
 # Curva ROC usando Plotly
 with col4:
     st.header("Curva ROC")
+    if nombre_modelo == "rfm_xgboost":
+        fpr, tpr = metricas['best_fpr'], metricas['best_tpr']
+        auc_score = metricas['best_score_auc']
+    elif nombre_modelo == "lstm":
+        y_test = metricas['predictions_df']['y_test'].values
+        y_pred_proba = metricas['predictions_df']['y_pred_proba'].values
+        fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+        auc_score = auc(fpr, tpr)
+
     fig_roc = go.Figure()
-    fig_roc.add_trace(go.Scatter(x=metricas['best_fpr'], y=metricas['best_tpr'], mode='lines', name="Curva ROC", line=dict(color=colores['entrenamiento'])))
+    fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name="Curva ROC", line=dict(color=colores['entrenamiento'])))
     fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
-    fig_roc.update_layout(title=f"Curva ROC (AUC = {metricas['best_score_auc']:.2f})", xaxis_title="Tasa de Falsos Positivos", yaxis_title="Tasa de Verdaderos Positivos", plot_bgcolor=colores['fondo'])
+    fig_roc.update_layout(title=f"Curva ROC (AUC = {auc_score:.2f})", xaxis_title="FPR", yaxis_title="TPR", plot_bgcolor=colores['fondo'])
     st.plotly_chart(fig_roc)
 
 # Curvas de Aprendizaje usando Plotly
 with col5:
     st.header("Curvas de Aprendizaje")
-    train_sizes = metricas['learning_curve']['train_sizes']
-    train_scores_mean = metricas['learning_curve']['train_scores_mean']
-    valid_scores_mean = metricas['learning_curve']['valid_scores_mean']
+    if nombre_modelo == "rfm_xgboost":
+        train_sizes = metricas['learning_curve']['train_sizes']
+        train_scores_mean = metricas['learning_curve']['train_scores_mean']
+        valid_scores_mean = metricas['learning_curve']['valid_scores_mean']
 
-    fig_learning = go.Figure()
-    fig_learning.add_trace(go.Scatter(x=train_sizes, y=train_scores_mean, mode='lines+markers', name="AUC en Entrenamiento", line=dict(color=colores['entrenamiento'])))
-    fig_learning.add_trace(go.Scatter(x=train_sizes, y=valid_scores_mean, mode='lines+markers', name="AUC en Validación", line=dict(color=colores['validacion'])))
-    fig_learning.update_layout(title="Curvas de Aprendizaje", xaxis_title="Tamaño del Conjunto de Entrenamiento", yaxis_title="AUC", plot_bgcolor=colores['fondo'])
-    st.plotly_chart(fig_learning)
+        fig_learning = go.Figure()
+        fig_learning.add_trace(go.Scatter(x=train_sizes, y=train_scores_mean, mode='lines+markers', name="AUC en Entrenamiento", line=dict(color=colores['entrenamiento'])))
+        fig_learning.add_trace(go.Scatter(x=train_sizes, y=valid_scores_mean, mode='lines+markers', name="AUC en Validación", line=dict(color=colores['validacion'])))
+        fig_learning.update_layout(title="Curvas de Aprendizaje - XGBoost", xaxis_title="Tamaño del Conjunto de Entrenamiento", yaxis_title="AUC", plot_bgcolor=colores['fondo'])
+        st.plotly_chart(fig_learning)
+    elif nombre_modelo == "lstm":
+        fig_learning = go.Figure()
+        fig_learning.add_trace(go.Scatter(y=metricas['training_history']['accuracy'], mode='lines', name='Exactitud en Entrenamiento', line=dict(color=colores['entrenamiento'])))
+        fig_learning.add_trace(go.Scatter(y=metricas['training_history']['val_accuracy'], mode='lines', name='Exactitud en Validación', line=dict(color=colores['validacion'])))
+        fig_learning.update_layout(title="Curvas de Aprendizaje - LSTM", xaxis_title="Épocas", yaxis_title="Exactitud", plot_bgcolor=colores['fondo'])
+        st.plotly_chart(fig_learning)
 
-# Matriz de Confusión con Plotly Heatmap
+# Matriz de Confusión
 with col6:
     st.header("Matriz de Confusión")
     threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
-    X_valid_dmatrix = DMatrix(pd.DataFrame(model_records['X_valid'], columns=model_records['feature_names']))
-    y_valid = model_records['y_valid']
-    y_proba = modelo.predict(X_valid_dmatrix)
-    y_pred_adjusted = (y_proba >= threshold).astype(int)
-    cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
+    if nombre_modelo == "rfm_xgboost":
+        X_valid_dmatrix = DMatrix(pd.DataFrame(model_records['X_valid'], columns=model_records['feature_names']))
+        y_valid = model_records['y_valid']
+        y_proba = modelo.predict(X_valid_dmatrix)
+        y_pred_adjusted = (y_proba >= threshold).astype(int)
+    elif nombre_modelo == "lstm":
+        y_test = metricas['predictions_df']['y_test'].values
+        y_pred_proba = metricas['predictions_df']['y_pred_proba'].values
+        y_pred_adjusted = (y_pred_proba >= threshold).astype(int)
+        y_valid = y_test
 
-    # Crear heatmap personalizado para la matriz de confusión
+    cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
     fig_cm = go.Figure(data=go.Heatmap(
         z=cm_adjusted,
         x=["Predicción Negativa", "Predicción Positiva"],
@@ -172,9 +217,13 @@ if uploaded_file is not None:
     st.write("Vista previa de los datos:")
     st.write(input_data.head())
 
-    input_data = input_data.reindex(columns=model_records['feature_names'], fill_value=0)
-    dmatrix_data = DMatrix(input_data)
-    pred_proba = modelo.predict(dmatrix_data)
+    if nombre_modelo == "rfm_xgboost":
+        input_data = input_data.reindex(columns=model_records['feature_names'], fill_value=0)
+        dmatrix_data = DMatrix(input_data)
+        pred_proba = modelo.predict(dmatrix_data)
+    elif nombre_modelo == "lstm":
+        pred_proba = modelo.predict(input_data).flatten()
+
     pred_labels = (pred_proba >= threshold).astype(int)
 
     st.write("Predicciones:")
