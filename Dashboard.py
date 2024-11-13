@@ -6,6 +6,7 @@ import json
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from xgboost import DMatrix
 import plotly.graph_objects as go
+from joblib import load  # Importa load para cargar el modelo joblib
 from tensorflow.keras.models import load_model  # Para cargar el modelo LSTM en formato .h5
 
 # Configurar la página en modo amplio
@@ -45,13 +46,37 @@ def cargar_modelo_y_métricas(nombre_modelo):
             'predictions_df': predictions_df
         }
         return model_records, lstm_model  # Retorna el modelo LSTM cargado
+    elif nombre_modelo == "apriori_rf":
+        # Cargar datos específicos para Apriori Random Forest
+        with open("dashboardData\AprioriRandomForest\metrics_data_AprioriModel.json", "r") as f:
+            apriori_rf_data = json.load(f)
+        
+        accuracy, precision, recall, f1, roc_auc = apriori_rf_data["metrics"].values()
+        report = {
+            'weighted avg': {
+                'precision': precision,
+                'recall': recall,
+                'f1-score': f1
+            }
+        }
+        model_records = {
+            'log_loss': apriori_rf_data["log_loss"],
+            'roc_curve': apriori_rf_data["roc_curve"],
+            'learning_curve': apriori_rf_data["learning_curve"],
+            'confusion_matrix': apriori_rf_data["confusion_matrix"],
+            'classification_report': report
+        }
+        rf_model = load("dashboardData/AprioriRandomForest/model_RandomForest_Loss.joblib")
+        return model_records, rf_model
     else:
         return None, None
+
 
 # Opciones de modelos en el menú desplegable
 modelos_disponibles = {
     "Modelo RFM - XGBoost": "rfm_xgboost",
     "Modelo LSTM": "lstm",
+    "Modelo Apriori - Random Forest": "apriori_rf"
 }
 
 # Dashboard - Título y Autores
@@ -134,6 +159,12 @@ with col3:
         fig_loss.add_trace(go.Scatter(y=metricas['training_history']['loss'], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
         fig_loss.add_trace(go.Scatter(y=metricas['training_history']['val_loss'], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
         fig_loss.update_layout(title="Curva de Entrenamiento - LSTM", xaxis_title="Épocas", yaxis_title="Loss", plot_bgcolor=colores['fondo'])
+    elif nombre_modelo == "apriori_rf":
+        # Convertir range en una lista para evitar errores
+        fig_loss.add_trace(go.Scatter(x=list(range(1, metricas['log_loss']["n_estimators"] + 1)), y=metricas['log_loss']["train_losses"], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
+        fig_loss.add_trace(go.Scatter(x=list(range(1, metricas['log_loss']["n_estimators"] + 1)), y=metricas['log_loss']["val_losses"], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
+        fig_loss.update_layout(title="Log Loss - Apriori Random Forest", xaxis_title="Número de Árboles", yaxis_title="Log Loss", plot_bgcolor=colores['fondo'])
+
     st.plotly_chart(fig_loss)
 
 # Sección de curvas y matriz de confusión
@@ -145,16 +176,35 @@ with col4:
     if nombre_modelo == "rfm_xgboost":
         fpr, tpr = metricas['best_fpr'], metricas['best_tpr']
         auc_score = metricas['best_score_auc']
+
+        fig_roc = go.Figure()
+        fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f"Clase 1 (AUC = {auc_score:.2f})", line=dict(color=colores['entrenamiento'])))
+        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
+        fig_roc.update_layout(title="Curva ROC - Apriori Random Forest", xaxis_title="FPR", yaxis_title="TPR", plot_bgcolor=colores['fondo'])
+
     elif nombre_modelo == "lstm":
         y_test = metricas['predictions_df']['y_test'].values
         y_pred_proba = metricas['predictions_df']['y_pred_proba'].values
         fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
         auc_score = auc(fpr, tpr)
 
-    fig_roc = go.Figure()
-    fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name="Curva ROC", line=dict(color=colores['entrenamiento'])))
-    fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
-    fig_roc.update_layout(title=f"Curva ROC (AUC = {auc_score:.2f})", xaxis_title="FPR", yaxis_title="TPR", plot_bgcolor=colores['fondo'])
+        fig_roc = go.Figure()
+        fig_roc.add_trace(go.Scatter(x=fpr, y=tpr, mode='lines', name=f"Clase 1 (AUC = {auc_score:.2f})", line=dict(color=colores['entrenamiento'])))
+        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
+        fig_roc.update_layout(title="Curva ROC - LSTM", xaxis_title="FPR", yaxis_title="TPR", plot_bgcolor=colores['fondo'])
+
+    elif nombre_modelo == "apriori_rf":
+        fpr1, tpr1 = metricas['roc_curve']['fpr1'], metricas['roc_curve']['tpr1']
+        roc_auc1 = metricas['roc_curve']['roc_auc1']
+        fpr0, tpr0 = metricas['roc_curve']['fpr0'], metricas['roc_curve']['tpr0']
+        roc_auc0 = metricas['roc_curve']['roc_auc0']
+
+        fig_roc = go.Figure()
+        fig_roc.add_trace(go.Scatter(x=fpr1, y=tpr1, mode='lines', name=f"Clase 1 (AUC = {roc_auc1:.2f})", line=dict(color=colores['entrenamiento'])))
+        fig_roc.add_trace(go.Scatter(x=fpr0, y=tpr0, mode='lines', name=f"Clase 0 (AUC = {roc_auc0:.2f})", line=dict(color=colores['validacion'])))
+        fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
+        fig_roc.update_layout(title="Curva ROC - Apriori Random Forest", xaxis_title="FPR", yaxis_title="TPR", plot_bgcolor=colores['fondo'])
+
     st.plotly_chart(fig_roc)
 
 # Curvas de Aprendizaje usando Plotly
@@ -176,23 +226,35 @@ with col5:
         fig_learning.add_trace(go.Scatter(y=metricas['training_history']['val_accuracy'], mode='lines', name='Exactitud en Validación', line=dict(color=colores['validacion'])))
         fig_learning.update_layout(title="Curvas de Aprendizaje - LSTM", xaxis_title="Épocas", yaxis_title="Exactitud", plot_bgcolor=colores['fondo'])
         st.plotly_chart(fig_learning)
+    elif nombre_modelo == "apriori_rf":
+        fig_learning = go.Figure()
+        fig_learning.add_trace(go.Scatter(x=metricas['learning_curve']['train_sizes'], y=metricas['learning_curve']['train_mean'], mode='lines', name='Precisión en Entrenamiento', line=dict(color=colores['entrenamiento'])))
+        fig_learning.add_trace(go.Scatter(x=metricas['learning_curve']['train_sizes'], y=metricas['learning_curve']['val_mean'], mode='lines', name='Precisión en Validación', line=dict(color=colores['validacion'])))
+        fig_learning.update_layout(title="Curvas de Aprendizaje - Apriori RF", xaxis_title="Tamaño del Conjunto de Entrenamiento", yaxis_title="Precisión", plot_bgcolor=colores['fondo'])
+        st.plotly_chart(fig_learning)
 
 # Matriz de Confusión
 with col6:
     st.header("Matriz de Confusión")
-    threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
+
     if nombre_modelo == "rfm_xgboost":
+        threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
         X_valid_dmatrix = DMatrix(pd.DataFrame(model_records['X_valid'], columns=model_records['feature_names']))
         y_valid = model_records['y_valid']
         y_proba = modelo.predict(X_valid_dmatrix)
         y_pred_adjusted = (y_proba >= threshold).astype(int)
+        cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
     elif nombre_modelo == "lstm":
+        threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
         y_test = metricas['predictions_df']['y_test'].values
         y_pred_proba = metricas['predictions_df']['y_pred_proba'].values
         y_pred_adjusted = (y_pred_proba >= threshold).astype(int)
         y_valid = y_test
+        cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
+    elif nombre_modelo == "apriori_rf":
+        cm_adjusted = metricas['confusion_matrix']  # Usar la matriz de confusión proporcionada
 
-    cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
+    # Crear heatmap de la matriz de confusión
     fig_cm = go.Figure(data=go.Heatmap(
         z=cm_adjusted,
         x=["Predicción Negativa", "Predicción Positiva"],
@@ -223,6 +285,8 @@ if uploaded_file is not None:
         pred_proba = modelo.predict(dmatrix_data)
     elif nombre_modelo == "lstm":
         pred_proba = modelo.predict(input_data).flatten()
+    elif nombre_modelo == "apriori_rf":
+        pred_proba = modelo.predict_proba(input_data)[:, 1]
 
     pred_labels = (pred_proba >= threshold).astype(int)
 
