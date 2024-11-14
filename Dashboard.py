@@ -63,6 +63,11 @@ def cargar_modelo_y_métricas(nombre_modelo):
         }
         rf_model = load("dashboardData/AprioriRandomForest/model_RandomForest_Loss.joblib")
         return model_records, rf_model
+
+    elif nombre_modelo == "logistic_regression":
+        archivo_modelo = "dashboardData/RegresionLogistica/modelo_logistico_con_metricas.pkl"
+        model_records = joblib.load(archivo_modelo)
+        return model_records, model_records['model']
     else:
         return None, None
 
@@ -70,7 +75,8 @@ def cargar_modelo_y_métricas(nombre_modelo):
 modelos_disponibles = {
     "Modelo RFM - XGBoost": "rfm_xgboost",
     "Modelo LSTM": "lstm",
-    "Modelo Apriori - Random Forest": "apriori_rf"
+    "Modelo Apriori - Random Forest": "apriori_rf",
+    "Modelo Regresión Logística": "logistic_regression"
 }
 
 st.markdown(f"""
@@ -100,6 +106,7 @@ with col1:
         - **RFM - XGBoost**: Un modelo basado en el análisis RFM (Recencia, Frecuencia, Valor Monetario) usando XGBoost.
         - **LSTM**: Una red neuronal recurrente que utiliza secuencias de comportamiento de clientes.
         - **Apriori - Random Forest**: Un modelo que combina reglas de asociación con Random Forest.
+        - **Regresión Logística**: Un modelo de clasificación lineal simple.
        Cada modelo muestra sus métricas y resultados específicos.
              
     2. **Visualización de Métricas y Gráficas**:
@@ -122,8 +129,6 @@ with col2:
     ### Beneficios del Dashboard
 
     Este dashboard facilita la toma de decisiones basadas en datos, apoyando a los equipos de marketing y ventas para optimizar sus campañas y esfuerzos de retención de clientes. Mediante la identificación de compradores recurrentes, es posible enfocar los recursos en los clientes más valiosos, maximizando así la efectividad de las estrategias de fidelización.
-    
-             
              """)
 
     st.markdown(f"<h2 style='color:{colores['exito']}'>Selección del modelo</h2>", unsafe_allow_html=True)
@@ -141,7 +146,10 @@ with col2:
 
     st.subheader("Métricas de los modelos")
     # Extraer métricas del reporte de clasificación
-    report = metricas['classification_report']
+    if nombre_modelo == "logistic_regression":
+        report = model_records['metrics']['classification_report']
+    else:
+        report = metricas['classification_report']
     results = {
         modelo_seleccionado: {
             'Precision': report['weighted avg']['precision'],
@@ -171,6 +179,20 @@ with col3:
         fig_loss.add_trace(go.Scatter(x=list(range(1, metricas['log_loss']["n_estimators"] + 1)), y=metricas['log_loss']["train_losses"], mode='lines', name='Pérdida en Entrenamiento', line=dict(color=colores['entrenamiento'])))
         fig_loss.add_trace(go.Scatter(x=list(range(1, metricas['log_loss']["n_estimators"] + 1)), y=metricas['log_loss']["val_losses"], mode='lines', name='Pérdida en Validación', line=dict(color=colores['validacion'])))
         fig_loss.update_layout(title="Log Loss - Apriori Random Forest", xaxis_title="Número de Árboles", yaxis_title="Log Loss", plot_bgcolor=colores['fondo'])
+    elif nombre_modelo == "logistic_regression":
+        fig_loss.add_trace(go.Scatter(
+            x=list(range(1, len(metricas['loss_values']) + 1)),  # Épocas en el eje X
+            y=metricas['loss_values'],  # Valores de pérdida en el eje Y
+            mode='lines',  # Solo líneas para una curva suavizada
+            name='Pérdida (Log Loss)',
+            line=dict(color=colores['entrenamiento'])
+        ))
+        fig_loss.update_layout(
+            title="Curva de Pérdida - Regresión Logística",
+            xaxis_title="Épocas",
+            yaxis_title="Log Loss",
+            plot_bgcolor=colores['fondo']
+        )
 
     st.plotly_chart(fig_loss)
 
@@ -211,8 +233,42 @@ with col4:
         fig_roc.add_trace(go.Scatter(x=fpr0, y=tpr0, mode='lines', name=f"Clase 0 (AUC = {roc_auc0:.2f})", line=dict(color=colores['validacion'])))
         fig_roc.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name="Línea Aleatoria", line=dict(dash='dash', color=colores['fondo'])))
         fig_roc.update_layout(title="Curva ROC - Apriori Random Forest", xaxis_title="FPR", yaxis_title="TPR", plot_bgcolor=colores['fondo'])
+    
+    elif nombre_modelo == "logistic_regression":
+        fig_roc = go.Figure()
+
+        color_map = {
+            'class_-1': colores['entrenamiento'],  # Clase -1
+            'class_0': colores['validacion'],      # Clase 0
+            'class_1': "#17C69B"                   # Clase 1 (por ejemplo, verde éxito)
+        }
+        for class_label, data in metricas['roc_auc_data'].items():
+            fpr, tpr, auc_score = data['fpr'], data['tpr'], data['auc']
+            fig_roc.add_trace(go.Scatter(
+                x=fpr, y=tpr,
+                mode='lines',
+                name=f"{class_label} (AUC = {auc_score:.2f})",
+                line=dict(color=color_map.get(class_label, colores['entrenamiento']))  # Color según clase
+            ))
+
+        # Añadir la línea de referencia (clasificación aleatoria)
+        fig_roc.add_trace(go.Scatter(
+            x=[0, 1], y=[0, 1],
+            mode='lines',
+            name="Línea Aleatoria",
+            line=dict(dash='dash', color=colores['exito'])
+        ))
+
+        # Configuración de la gráfica
+        fig_roc.update_layout(
+            title="Curva ROC - Regresión Logística",
+            xaxis_title="False Positive Rate (FPR)",
+            yaxis_title="True Positive Rate (TPR)",
+            plot_bgcolor=colores['fondo']
+        )
 
     st.plotly_chart(fig_roc)
+
 
 # Curvas de Aprendizaje usando Plotly
 with col5:
@@ -239,6 +295,80 @@ with col5:
         fig_learning.add_trace(go.Scatter(x=metricas['learning_curve']['train_sizes'], y=metricas['learning_curve']['val_mean'], mode='lines', name='Precisión en Validación', line=dict(color=colores['validacion'])))
         fig_learning.update_layout(title="Curvas de Aprendizaje - Apriori RF", xaxis_title="Tamaño del Conjunto de Entrenamiento", yaxis_title="Precisión", plot_bgcolor=colores['fondo'])
         st.plotly_chart(fig_learning)
+    elif nombre_modelo == "logistic_regression":
+        # Convertir las listas a arrays de NumPy para realizar operaciones elementales
+        train_sizes = np.array(metricas['learning_curve']['train_sizes'])
+        train_scores_mean = np.array(metricas['learning_curve']['train_scores_mean'])
+        train_scores_std = np.array(metricas['learning_curve']['train_scores_std'])
+        valid_scores_mean = np.array(metricas['learning_curve']['valid_scores_mean'])
+        valid_scores_std = np.array(metricas['learning_curve']['valid_scores_std'])
+
+        fig_learning = go.Figure()
+
+        # AUC en Entrenamiento con banda de desviación estándar
+        fig_learning.add_trace(go.Scatter(
+            x=train_sizes, 
+            y=train_scores_mean, 
+            mode='lines', 
+            name="AUC en Entrenamiento", 
+            line=dict(color=colores['entrenamiento'])
+        ))
+        fig_learning.add_trace(go.Scatter(
+            x=train_sizes, 
+            y=train_scores_mean + train_scores_std, 
+            mode='lines', 
+            name="Desviación Estándar Entrenamiento (+)", 
+            line=dict(color=colores['entrenamiento'], width=0),
+            showlegend=False,
+            fill='tonexty'  # Relleno hacia abajo hasta la curva de media
+        ))
+        fig_learning.add_trace(go.Scatter(
+            x=train_sizes, 
+            y=train_scores_mean - train_scores_std, 
+            mode='lines', 
+            name="Desviación Estándar Entrenamiento (-)", 
+            line=dict(color=colores['entrenamiento'], width=0),
+            showlegend=False,
+            fill='tonexty'  # Relleno hacia abajo hasta la curva de media
+        ))
+
+        # AUC en Validación con banda de desviación estándar
+        fig_learning.add_trace(go.Scatter(
+            x=train_sizes, 
+            y=valid_scores_mean, 
+            mode='lines', 
+            name="AUC en Validación", 
+            line=dict(color=colores['validacion'])
+        ))
+        fig_learning.add_trace(go.Scatter(
+            x=train_sizes, 
+            y=valid_scores_mean + valid_scores_std, 
+            mode='lines', 
+            name="Desviación Estándar Validación (+)", 
+            line=dict(color=colores['validacion'], width=0),
+            showlegend=False,
+            fill='tonexty'  # Relleno hacia abajo hasta la curva de media
+        ))
+        fig_learning.add_trace(go.Scatter(
+            x=train_sizes, 
+            y=valid_scores_mean - valid_scores_std, 
+            mode='lines', 
+            name="Desviación Estándar Validación (-)", 
+            line=dict(color=colores['validacion'], width=0),
+            showlegend=False,
+            fill='tonexty'  # Relleno hacia abajo hasta la curva de media
+        ))
+
+        # Configuración de la gráfica
+        fig_learning.update_layout(
+            title="Curvas de Aprendizaje - Regresión Logística",
+            xaxis_title="Tamaño del Conjunto de Entrenamiento",
+            yaxis_title="AUC",
+            plot_bgcolor=colores['fondo']
+        )
+
+        st.plotly_chart(fig_learning)
+
 
 # Matriz de Confusión
 with col6:
@@ -251,6 +381,8 @@ with col6:
         y_proba = modelo.predict(X_valid_dmatrix)
         y_pred_adjusted = (y_proba >= threshold).astype(int)
         cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
+        x_labels=["Predicción Negativa", "Predicción Positiva"]
+        y_labels= ["Real Negativo", "Real Positivo"]
     elif nombre_modelo == "lstm":
         threshold = st.slider("Umbral de decisión", 0.0, 0.5, 0.25)
         y_test = metricas['predictions_df']['y_test'].values
@@ -258,14 +390,21 @@ with col6:
         y_pred_adjusted = (y_pred_proba >= threshold).astype(int)
         y_valid = y_test
         cm_adjusted = confusion_matrix(y_valid, y_pred_adjusted)
+        x_labels=["Predicción Negativa", "Predicción Positiva"]
+        y_labels= ["Real Negativo", "Real Positivo"]
     elif nombre_modelo == "apriori_rf":
         cm_adjusted = metricas['confusion_matrix']  # Usar la matriz de confusión proporcionada
-
+        x_labels=["Predicción Negativa", "Predicción Positiva"]
+        y_labels= ["Real Negativo", "Real Positivo"]
+    elif nombre_modelo == "logistic_regression":
+        cm_adjusted = metricas['metrics']['confusion_matrix']  # Matriz de confusión precalculada para regresión logística
+        x_labels = ["Predicción -1", "Predicción 0", "Predicción 1"]
+        y_labels = ["Real -1", "Real 0", "Real 1"]
     # Crear heatmap de la matriz de confusión
     fig_cm = go.Figure(data=go.Heatmap(
         z=cm_adjusted,
-        x=["Predicción Negativa", "Predicción Positiva"],
-        y=["Real Negativo", "Real Positivo"],
+        x=x_labels,
+        y=y_labels,
         colorscale=[[0, colores['fondo']], [1, colores['exito']]],
         texttemplate="%{z}",
         showscale=False
@@ -284,9 +423,16 @@ uploaded_file = st.file_uploader("Selecciona un archivo CSV para predecir", type
 if uploaded_file is not None:
     # Cargar datos desde el archivo subido
     input_data = pd.read_csv(uploaded_file)
-    st.write("Vista previa de los datos:")
-    st.write(input_data.head())
-
+    # Título y vista previa centrados
+    st.markdown("<h3 style='text-align: center;'>Vista previa de los datos</h3>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div style='display: flex; justify-content: center;'>
+            {input_data.head().to_html(index=False)}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     # Preparar los datos según el modelo seleccionado
     if nombre_modelo == "rfm_xgboost":
         input_data = input_data.reindex(columns=model_records['feature_names'], fill_value=0)
@@ -330,20 +476,45 @@ if uploaded_file is not None:
         input_data = input_data.reindex(columns=feature_names, fill_value=0)
         pred_proba = modelo.predict_proba(input_data)[:, 1]
 
+    elif nombre_modelo == "logistic_regression":
+        # Definir manualmente los nombres de las columnas según el entrenamiento del modelo
+        feature_names = [
+            'user_id', 'age_range', 'gender', 'merchant_id', 'item_id', 'category_id', 
+            'brand_id', 'clicks', 'add_to_cart', 'purchases', 'add_to_favorites', 
+            'total_actions', 'unique_item_count'
+        ]
+        input_data = input_data.reindex(columns=feature_names, fill_value=0)
+
+        # Obtener las probabilidades de la clase positiva (1)
+        pred_proba = modelo.predict_proba(input_data)
+        
+
     # Convertir probabilidades a etiquetas (0 o 1) usando el umbral si hay predicciones
     if len(pred_proba) > 0:
         if nombre_modelo == "apriori_rf" or nombre_modelo == "lstm":
             pred_labels = (pred_proba).astype(int)
+        elif nombre_modelo == "logistic_regression":
+            pred_labels = np.argmax(pred_proba, axis=1) - 1
         else:
             pred_labels = (pred_proba >= threshold).astype(int)
 
         # Crear DataFrame de resultados
-        resultados = pd.DataFrame({
-            "ID": range(len(pred_labels)),  # Usa un identificador si lo tienes; aquí se usa un índice
-            "Predicción": pred_labels,
-            "Probabilidad recurrencia": pred_proba
-        })
-
+        if nombre_modelo == "logistic_regression":
+            resultados = pd.DataFrame({
+                "ID": range(len(pred_labels)),
+                "Predicción": pred_labels,
+                "Probabilidad Clase -1": pred_proba[:, 0],
+                "Probabilidad Clase 0": pred_proba[:, 1],
+                "Probabilidad Clase 1": pred_proba[:, 2]
+            })
+            y_col = "Probabilidad Clase 1"
+        else:
+            resultados = pd.DataFrame({
+                "ID": range(len(pred_labels)),
+                "Predicción": pred_labels,
+                "Probabilidad recurrencia": pred_proba
+            })
+            y_col = "Probabilidad recurrencia"
         # Crear dos columnas en Streamlit
         col1, col2 = st.columns([1, 4])
 
@@ -366,8 +537,8 @@ if uploaded_file is not None:
             fig = px.bar(
                 resultados,
                 x="ID",
-                y="Probabilidad recurrencia",
-                color="Probabilidad recurrencia",  # Usamos la probabilidad para el degradado
+                y=y_col,
+                color=y_col,  # Usamos la probabilidad para el degradado
                 color_continuous_scale=["#17C69B", "#FB3640"],  # Verde para probabilidad baja, rojo para alta
                 labels={"ID": "ID de muestra"}
             )
@@ -377,7 +548,7 @@ if uploaded_file is not None:
                 title="Probabilidades de recurrencia de clientes",
                 title_font=dict(size=20, color="#A90448"),  # Usar el color de título definido
                 xaxis_title="ID de muestra",
-                yaxis_title="Probabilidad recurrencia",
+                yaxis_title=y_col,
                 plot_bgcolor="#13141A",  # Fondo oscuro
                 paper_bgcolor="#13141A",  # Fondo de papel oscuro
                 font=dict(color="white"),
