@@ -9,11 +9,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 from joblib import load  # Importa load para cargar el modelo joblib
 from tensorflow.keras.models import load_model  # Para cargar el modelo LSTM en formato .h5
+import joblib
 
-# Configurar la página en modo amplio
 st.set_page_config(layout="wide", page_title="📚 GRUPO 4 - CR 🔎")
 
-# Definir colores de la paleta
 colores = {
     "fondo": "#13141A",
     "titulo": "#A90448",
@@ -22,7 +21,6 @@ colores = {
     "exito": "#17C69B"
 }
 
-# Función para cargar el modelo y métricas según el modelo seleccionado
 def cargar_modelo_y_métricas(nombre_modelo):
     if nombre_modelo == "rfm_xgboost":
         archivo_modelo = "dashboardData/XGBoostRFM/metricas_rfm_xgboost.pkl"
@@ -30,25 +28,21 @@ def cargar_modelo_y_métricas(nombre_modelo):
             model_records = pickle.load(f)
         return model_records, model_records['best_instance']
     elif nombre_modelo == "lstm":
-        # Cargar archivos específicos para el modelo LSTM
         with open("dashboardData/LSTM/classification_reportLSTM.json", "r") as f:
             classification_report = json.load(f)
         with open("dashboardData/LSTM/training_historyLSTM.json", "r") as f:
             training_history = json.load(f)
         predictions_df = pd.read_csv("dashboardData/LSTM/predictionsLSTM.csv")
         
-        # Cargar el modelo LSTM en formato .h5
         lstm_model = load_model("dashboardData/LSTM/model_lstm_optimized.h5")
         
-        # Estructurar los datos como se esperan en el código
         model_records = {
             'classification_report': classification_report,
             'training_history': training_history,
             'predictions_df': predictions_df
         }
-        return model_records, lstm_model  # Retorna el modelo LSTM cargado
+        return model_records, lstm_model 
     elif nombre_modelo == "apriori_rf":
-        # Cargar datos específicos para Apriori Random Forest
         with open("dashboardData\AprioriRandomForest\metrics_data_AprioriModel.json", "r") as f:
             apriori_rf_data = json.load(f)
         
@@ -73,14 +67,12 @@ def cargar_modelo_y_métricas(nombre_modelo):
         return None, None
 
 
-# Opciones de modelos en el menú desplegable
 modelos_disponibles = {
     "Modelo RFM - XGBoost": "rfm_xgboost",
     "Modelo LSTM": "lstm",
     "Modelo Apriori - Random Forest": "apriori_rf"
 }
 
-# Dashboard - Título y Autores
 st.markdown(f"""
 <h1 style='text-align: center; color:{colores['titulo']}'>
 📚 DASHBOARD - PREDICTOR DE COMPRADORES RECURRENTES - RESULTADOS 🔎
@@ -95,30 +87,44 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sección de Instrucciones de uso
 col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown(f"<h2 style='color:{colores['titulo']}'>Instrucciones de uso</h2>", unsafe_allow_html=True)
     st.write("""
-    Este dashboard ha sido diseñado para permitir una visualización y análisis detallados de los resultados obtenidos con un modelo de predicción de compradores recurrentes, desarrollado en el contexto de un proyecto universitario. Su propósito principal es ayudar a los usuarios a entender el comportamiento de los clientes y a anticipar su probabilidad de realizar compras futuras, basándose en técnicas avanzadas de análisis de datos.
+    Este dashboard permite visualizar y analizar los resultados de un modelo seleccionado de predicción de compradores recurrentes. Puedes explorar las métricas y gráficas asociadas a cada modelo y realizar predicciones cargando nuevos datos de clientes en formato CSV.
 
     ### Cómo Utilizar el Dashboard
 
-    1. **Resultados Generales**: En esta sección, se presentan los principales indicadores del modelo, como la precisión promedio y el AUC en validación cruzada. Estos resultados permiten obtener una visión global del rendimiento del modelo.
+    1. **Selección del Modelo**:
+       En el menú "Selección del modelo", puedes elegir entre tres modelos diferentes:
+        - **RFM - XGBoost**: Un modelo basado en el análisis RFM (Recencia, Frecuencia, Valor Monetario) usando XGBoost.
+        - **LSTM**: Una red neuronal recurrente que utiliza secuencias de comportamiento de clientes.
+        - **Apriori - Random Forest**: Un modelo que combina reglas de asociación con Random Forest.
+       Cada modelo muestra sus métricas y resultados específicos.
+             
+    2. **Visualización de Métricas y Gráficas**:
+       Una vez que seleccionas un modelo, puedes visualizar sus principales métricas de rendimiento, como la precisión y el F1-Score. También podrás ver:
+        - **Curvas de Pérdida**: Para evaluar la evolución del error durante el entrenamiento y validación.
+        - **Curva ROC**: Muestra la capacidad de discriminación del modelo.
+        - **Curvas de Aprendizaje**: Ayuda a entender cómo mejora el modelo con más datos de entrenamiento.
+        - **Matriz de Confusión**: Disponible para ajustar y ver la precisión en función de un umbral de decisión.
 
-    2. **Métricas y Gráficas**: Visualice y analice gráficas interactivas como la curva ROC, curvas de aprendizaje y la matriz de confusión, las cuales ayudan a comprender la capacidad del modelo para clasificar correctamente a los clientes y a identificar áreas de mejora.
-
-    3. **Predicción de Nuevos Datos**: Para realizar predicciones, suba un archivo CSV con los datos del cliente a la sección de "Predicción". El modelo procesará el archivo y generará probabilidades de recurrencia en las compras, permitiéndole identificar qué clientes tienen una mayor probabilidad de realizar compras futuras.
     """)
 
 # Selección del modelo
 with col2:
     st.write("")
     st.write("""
+    ### Recomendaciones:
+    - **Formato de datos**: Asegúrate de que el archivo CSV cumpla con el formato específico del modelo seleccionado. Los detalles sobre las columnas requeridas se encuentran en la documentación del proyecto.
+    - **Umbral de decisión**: Experimenta con diferentes umbrales para ver cómo afectan la matriz de confusión y las predicciones.
+
     ### Beneficios del Dashboard
 
     Este dashboard facilita la toma de decisiones basadas en datos, apoyando a los equipos de marketing y ventas para optimizar sus campañas y esfuerzos de retención de clientes. Mediante la identificación de compradores recurrentes, es posible enfocar los recursos en los clientes más valiosos, maximizando así la efectividad de las estrategias de fidelización.
-    """)
+    
+             
+             """)
 
     st.markdown(f"<h2 style='color:{colores['exito']}'>Selección del modelo</h2>", unsafe_allow_html=True)
 
@@ -272,53 +278,115 @@ with col6:
     )
     st.plotly_chart(fig_cm)
 
+# Configurar la interfaz de Streamlit
 st.header("Predicción")
 uploaded_file = st.file_uploader("Selecciona un archivo CSV para predecir", type="csv")
 if uploaded_file is not None:
-    # Cargar datos del archivo subido
+    # Cargar datos desde el archivo subido
     input_data = pd.read_csv(uploaded_file)
     st.write("Vista previa de los datos:")
     st.write(input_data.head())
 
-    # Realizar predicciones según el modelo seleccionado
+    # Preparar los datos según el modelo seleccionado
     if nombre_modelo == "rfm_xgboost":
         input_data = input_data.reindex(columns=model_records['feature_names'], fill_value=0)
         dmatrix_data = DMatrix(input_data)
         pred_proba = modelo.predict(dmatrix_data)
+    
     elif nombre_modelo == "lstm":
-        pred_proba = modelo.predict(input_data).flatten()
+        # Cargar el scaler para el modelo LSTM
+        scaler = joblib.load('dashboardData/LSTM/scalerLSTM.pkl')
+
+        # Parámetros de la secuencia esperados por el modelo LSTM
+        sequence_length = 10
+        required_columns = [
+            'age_range', 'gender', 'clicks', 'add_to_cart', 'purchases', 
+            'add_to_favorites', 'total_actions', 'unique_item_count', 
+            'user_id', 'merchant_id', 'item_id', 'category_id', 'brand_id'
+        ]
+        # Seleccionar las columnas requeridas para el modelo LSTM
+        input_data = input_data[required_columns]
+
+        # Convertir a array y escalar los datos
+        data_array = input_data.to_numpy()
+        data_scaled = scaler.transform(data_array)
+
+        # Generar secuencias de longitud adecuada (10 pasos)
+        sequences = []
+        for i in range(len(data_scaled) - sequence_length + 1):
+            sequences.append(data_scaled[i:i + sequence_length])
+        
+        sequences = np.array(sequences)
+
+        # Verificar si hay suficientes secuencias para realizar predicciones
+        if len(sequences) > 0:
+            pred_proba = modelo.predict(sequences).flatten()
+        else:
+            st.error(f"No hay suficientes datos para generar secuencias de longitud {sequence_length}.")
+            pred_proba = []
+
     elif nombre_modelo == "apriori_rf":
+        feature_names = modelo.feature_names_in_
+        input_data = input_data.reindex(columns=feature_names, fill_value=0)
         pred_proba = modelo.predict_proba(input_data)[:, 1]
 
-    # Convertir probabilidades a etiquetas (0 o 1) usando el umbral
-    pred_labels = (pred_proba >= threshold).astype(int)
+    # Convertir probabilidades a etiquetas (0 o 1) usando el umbral si hay predicciones
+    if len(pred_proba) > 0:
+        if nombre_modelo == "apriori_rf" or nombre_modelo == "lstm":
+            pred_labels = (pred_proba).astype(int)
+        else:
+            pred_labels = (pred_proba >= threshold).astype(int)
 
-    # Mostrar predicciones en un DataFrame
-    st.write("Predicciones detalladas:")
-    resultados = pd.DataFrame({
-        "ID": input_data.index,  # Usa un identificador si lo tienes, aquí se usa el índice de DataFrame
-        "Predicción": pred_labels,
-        "Probabilidad Clase 1": pred_proba
-    })
+        # Crear DataFrame de resultados
+        resultados = pd.DataFrame({
+            "ID": range(len(pred_labels)),  # Usa un identificador si lo tienes; aquí se usa un índice
+            "Predicción": pred_labels,
+            "Probabilidad recurrencia": pred_proba
+        })
 
-    st.write(resultados)
+        # Crear dos columnas en Streamlit
+        col1, col2 = st.columns([1, 4])
 
-    # Graficar las probabilidades de predicción con Plotly
-    fig = px.bar(resultados, x="ID", y="Probabilidad Clase 1", color="Predicción",
-                 color_continuous_scale=["blue", "red"], labels={"ID": "ID de muestra"})
-    fig.update_layout(
-        title="Probabilidades de Predicción para la Clase 1",
-        xaxis_title="ID de muestra",
-        yaxis_title="Probabilidad de Clase 1",
-        coloraxis_colorbar=dict(title="Clase Predicha")
-    )
-    st.plotly_chart(fig)
+        # Mostrar predicciones detalladas en la primera columna
+        with col1:
+            st.write("Predicciones detalladas:")
+            st.write(resultados)
 
-    # Botón para descargar las predicciones
-    csv = resultados.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Descargar predicciones",
-        data=csv,
-        file_name="predicciones.csv",
-        mime="text/csv"
-    )
+            # Botón para descargar las predicciones
+            csv = resultados.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Descargar predicciones",
+                data=csv,
+                file_name="predicciones.csv",
+                mime="text/csv"
+            )
+
+        # Graficar las probabilidades de predicción en la segunda columna con un efecto degradado en el color de las barras
+        with col2:
+            fig = px.bar(
+                resultados,
+                x="ID",
+                y="Probabilidad recurrencia",
+                color="Probabilidad recurrencia",  # Usamos la probabilidad para el degradado
+                color_continuous_scale=["#17C69B", "#FB3640"],  # Verde para probabilidad baja, rojo para alta
+                labels={"ID": "ID de muestra"}
+            )
+
+            # Configurar el diseño del gráfico
+            fig.update_layout(
+                title="Probabilidades de recurrencia de clientes",
+                title_font=dict(size=20, color="#A90448"),  # Usar el color de título definido
+                xaxis_title="ID de muestra",
+                yaxis_title="Probabilidad recurrencia",
+                plot_bgcolor="#13141A",  # Fondo oscuro
+                paper_bgcolor="#13141A",  # Fondo de papel oscuro
+                font=dict(color="white"),
+                coloraxis_colorbar=dict(title="Probabilidad")
+            )
+
+            # Ajustar el color de los ejes y el título para que tengan contraste
+            fig.update_yaxes(title_font=dict(color="white"), tickfont=dict(color="white"))
+            fig.update_xaxes(title_font=dict(color="white"), tickfont=dict(color="white"))
+
+            # Mostrar el gráfico en Streamlit
+            st.plotly_chart(fig)
