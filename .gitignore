@@ -5,3 +5,4 @@ data/
 data/data_format1/
 data/data_format2/
 *.zip
+dashboardData/AprioriRandomForest/model_RandomForest_Loss.joblib
